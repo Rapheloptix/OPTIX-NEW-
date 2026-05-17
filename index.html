@@ -1,11 +1,9 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>OPTIX — Retail Intelligence</title>
+<title>OPTIX - Retail Intelligence</title>
 <script src="https://cdn.jsdelivr.net/npm/tus-js-client@3.1.0/dist/tus.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
@@ -32,14 +30,39 @@ main{max-width:1100px;margin:0 auto;padding:2rem}
 .done{background:#14532d33;color:#4ade80;border:1px solid #166534}
 .error{background:#7f1d1d33;color:#f87171;border:1px solid #991b1b}
 
-/* Stats row */
+/* Stats */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem}
 .stat{background:#0f1117;border-radius:8px;padding:1rem;text-align:center;border:1px solid #2d3148}
-.stat-val{font-size:1.8rem;font-weight:700;color:#fff}
+.stat-val{font-size:1.6rem;font-weight:700;color:#fff}
 .stat-label{font-size:.75rem;color:#64748b;margin-top:.25rem}
 
+/* Advice boxes */
+.advice-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin-bottom:1.5rem}
+.advice-box{border-radius:10px;padding:1.2rem;border:1px solid}
+.advice-box.red{background:#7f1d1d22;border-color:#991b1b}
+.advice-box.green{background:#14532d22;border-color:#166534}
+.advice-box.blue{background:#1e3a8a22;border-color:#1e40af}
+.advice-box .icon{font-size:1.4rem;margin-bottom:.4rem}
+.advice-box h3{font-size:.95rem;font-weight:700;margin-bottom:.3rem;color:#fff}
+.advice-box p{font-size:.82rem;color:#94a3b8;line-height:1.5}
+
+/* Chart */
+.chart-wrap{position:relative;height:280px;margin-top:1rem}
+
+/* Staffing table */
+.staff-table{width:100%;border-collapse:collapse;margin-top:1rem;font-size:.85rem}
+.staff-table th{text-align:left;color:#64748b;padding:.4rem .6rem;border-bottom:1px solid #2d3148;font-weight:600}
+.staff-table td{padding:.5rem .6rem;border-bottom:1px solid #1a1d2e}
+.staff-table .full td{color:#f87171;font-weight:600}
+.staff-table .normal td{color:#e2e8f0}
+.staff-table .reduce td{color:#4ade80;font-weight:600}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.75rem;font-weight:600}
+.pill-red{background:#7f1d1d44;color:#f87171;border:1px solid #991b1b}
+.pill-yellow{background:#78350f44;color:#fbbf24;border:1px solid #92400e}
+.pill-green{background:#14532d44;color:#4ade80;border:1px solid #166534}
+
 /* Tabs */
-.tabs{display:flex;gap:.5rem;margin-bottom:1rem}
+.tabs{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap}
 .tab{background:#0f1117;border:1px solid #2d3148;color:#64748b;padding:.4rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem;transition:all .2s}
 .tab.active{background:#3b82f6;border-color:#3b82f6;color:#fff}
 
@@ -54,16 +77,13 @@ main{max-width:1100px;margin:0 auto;padding:2rem}
 .legend-bar{flex:1;height:14px;border-radius:4px}
 .legend-labels{display:flex;justify-content:space-between;font-size:.7rem;color:#64748b;margin-top:3px}
 
-/* Chart */
-.chart-wrap{position:relative;height:260px;margin-top:1rem}
-
-/* Interest zones list */
+/* Interest zones */
 .iz-card{background:#0f1117;border:1px solid #2d3148;border-radius:8px;padding:.85rem;margin-bottom:.6rem}
-.iz-card h3{font-size:.8rem;color:#94a3b8;margin-bottom:.3rem}
-.iz-val{font-size:1.3rem;font-weight:700;color:#fbbf24}
-.iz-track{background:#1a1d2e;border-radius:99px;height:6px;margin-top:.35rem}
+.iz-card h3{font-size:.85rem;font-weight:700;color:#fff;margin-bottom:.2rem}
+.iz-val{font-size:1.1rem;font-weight:700;color:#fbbf24}
+.iz-track{background:#1a1d2e;border-radius:99px;height:6px;margin-top:.35rem;margin-bottom:.5rem}
 .iz-fill{height:100%;background:#f59e0b;border-radius:99px}
-.iz-tip{font-size:.77rem;color:#64748b;margin-top:.35rem}
+.iz-tip{font-size:.8rem;color:#94a3b8;line-height:1.5}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
 @media(max-width:640px){.grid2{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
@@ -76,13 +96,12 @@ main{max-width:1100px;margin:0 auto;padding:2rem}
 </header>
 <main>
 
-  <!-- Upload -->
   <div class="card">
     <h2>Upload CCTV Video</h2>
     <div class="dropzone" id="dz" onclick="document.getElementById('fi').click()">
-      <div style="font-size:2.5rem">🎬</div>
+      <div style="font-size:2.5rem">&#127916;</div>
       <strong id="fname">Drop video here or click to select</strong>
-      <p>Any size · MP4, AVI, MOV · Resumes automatically if connection drops</p>
+      <p>Any size &middot; MP4, AVI, MOV &middot; Resumes automatically if connection drops</p>
       <input type="file" id="fi" accept="video/*" style="display:none"/>
     </div>
     <button class="btn" id="btn" disabled onclick="go()">Select a video first</button>
@@ -91,75 +110,80 @@ main{max-width:1100px;margin:0 auto;padding:2rem}
     <div id="status"></div>
   </div>
 
-  <!-- Results -->
   <div class="hidden" id="rc">
 
     <!-- Stats -->
     <div class="stats">
       <div class="stat">
-        <div class="stat-val" id="s-total">—</div>
-        <div class="stat-label">Total people counted</div>
-      </div>
-      <div class="stat">
-        <div class="stat-val" id="s-peak" style="color:#f87171">—</div>
+        <div class="stat-val" id="s-peak" style="color:#f87171">--</div>
         <div class="stat-label">Busiest hour</div>
       </div>
       <div class="stat">
-        <div class="stat-val" id="s-dur">—</div>
+        <div class="stat-val" id="s-quiet" style="color:#4ade80">--</div>
+        <div class="stat-label">Quietest hour</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="s-dur">--</div>
         <div class="stat-label">Video duration</div>
       </div>
     </div>
 
-    <!-- Feature 2: People per hour chart -->
+    <!-- Action advice -->
+    <div class="advice-row" id="adviceRow"></div>
+
+    <!-- Traffic load chart + staffing table -->
     <div class="card">
-      <h2>People per hour — staffing guide</h2>
-      <p style="font-size:.8rem;color:#64748b;margin-bottom:.5rem">
-        Use this chart to plan exactly how many staff you need each hour. Red bar = peak hour.
+      <h2>Traffic load by hour &mdash; staffing guide</h2>
+      <p style="font-size:.82rem;color:#94a3b8;line-height:1.5;margin-bottom:.5rem">
+        Shows how busy each hour is compared to the busiest hour (100%). Use this to decide exactly how many staff you need each hour.
       </p>
-      <div class="chart-wrap">
-        <canvas id="hourChart"></canvas>
-      </div>
+      <div class="chart-wrap"><canvas id="hourChart"></canvas></div>
+
+      <table class="staff-table" id="staffTable">
+        <thead>
+          <tr>
+            <th>Hour</th>
+            <th>Traffic level</th>
+            <th>Staffing recommendation</th>
+          </tr>
+        </thead>
+        <tbody id="staffBody"></tbody>
+      </table>
     </div>
 
-    <!-- Feature 1: Heatmap + Feature 3: Interest zones -->
+    <!-- Heatmap + Interest zones -->
     <div class="card">
       <h2>Motion analysis</h2>
-
       <div class="tabs">
-        <button class="tab active" id="t-heat"     onclick="switchTab('heat')">🌡 Heatmap</button>
-        <button class="tab"        id="t-overlay"  onclick="switchTab('overlay')">📷 Overlay</button>
-        <button class="tab"        id="t-interest" onclick="switchTab('interest')">⭐ Interest zones</button>
+        <button class="tab active" id="t-heat"     onclick="switchTab('heat')">Heatmap</button>
+        <button class="tab"        id="t-overlay"  onclick="switchTab('overlay')">Overlay</button>
+        <button class="tab"        id="t-interest" onclick="switchTab('interest')">Interest zones</button>
       </div>
-
       <div class="grid2">
-        <!-- Left: image -->
         <div>
-          <div class="img-wrap" id="img-wrap">
+          <div class="img-wrap" id="imgWrap">
             <img id="mainImg" src="" alt="analysis"/>
           </div>
-          <!-- Color legend — changes per tab -->
-          <div class="legend" id="legend-heat">
-            <span style="font-size:.7rem;color:#64748b">Cold</span>
+          <div class="legend" id="legendHeat">
+            <span style="font-size:.7rem;color:#64748b">Low</span>
             <div style="flex:1">
               <div class="legend-bar" style="background:linear-gradient(to right,#00008b,#0000ff,#00ffff,#00ff00,#ffff00,#ff8000,#ff0000)"></div>
-              <div class="legend-labels"><span>Nobody</span><span>Some traffic</span><span>🔴 Most crowded</span></div>
+              <div class="legend-labels"><span>Nobody</span><span>Some traffic</span><span>Most crowded</span></div>
             </div>
-            <span style="font-size:.7rem;color:#f87171">Hot</span>
+            <span style="font-size:.7rem;color:#f87171">High</span>
           </div>
-          <div class="legend hidden" id="legend-interest">
-            <span style="font-size:.7rem;color:#64748b">Moving fast</span>
+          <div class="legend hidden" id="legendInterest">
+            <span style="font-size:.7rem;color:#64748b">Fast</span>
             <div style="flex:1">
               <div class="legend-bar" style="background:linear-gradient(to right,#000,#800,#f00,#ff8c00,#ffff00,#fff)"></div>
-              <div class="legend-labels"><span>Passing by</span><span>Slowing down</span><span>⭐ Stopping here</span></div>
+              <div class="legend-labels"><span>Passing by</span><span>Slowing down</span><span>Stopping here</span></div>
             </div>
             <span style="font-size:.7rem;color:#fbbf24">Interested</span>
           </div>
         </div>
-
-        <!-- Right: interest zones -->
         <div>
           <p style="font-size:.8rem;color:#94a3b8;margin-bottom:.75rem">
-            Top zones where people slow down — best spots for high-margin products
+            Top zones where people slow down &mdash; best spots for high-margin products
           </p>
           <div id="izList"></div>
         </div>
@@ -170,15 +194,12 @@ main{max-width:1100px;margin:0 auto;padding:2rem}
 </main>
 
 <script>
-// ── Config ────────────────────────────────────────────────────────────────────
-const API = "https://optix-new.onrender.com";
+var API = "https://optix-new.onrender.com";
+var file = null, upload = null, poll = null, chart = null;
+var heatUrl = "", overlayUrl = "", interestUrl = "";
+var interestZones = [];
 
-let file = null, upload = null, poll = null, chart = null;
-let heatUrl = "", overlayUrl = "", interestUrl = "";
-let currentTab = "heat";
-
-// ── File selection ─────────────────────────────────────────────────────────────
-document.getElementById("fi").onchange = e => {
+document.getElementById("fi").onchange = function(e) {
   file = e.target.files[0];
   if (!file) return;
   document.getElementById("fname").textContent = file.name + " (" + fmt(file.size) + ")";
@@ -186,10 +207,10 @@ document.getElementById("fi").onchange = e => {
   document.getElementById("btn").textContent = "Upload & Analyse";
 };
 
-const dz = document.getElementById("dz");
-dz.ondragover = e => { e.preventDefault(); dz.classList.add("drag"); };
-dz.ondragleave = () => dz.classList.remove("drag");
-dz.ondrop = e => {
+var dz = document.getElementById("dz");
+dz.ondragover = function(e) { e.preventDefault(); dz.classList.add("drag"); };
+dz.ondragleave = function() { dz.classList.remove("drag"); };
+dz.ondrop = function(e) {
   e.preventDefault(); dz.classList.remove("drag");
   file = e.dataTransfer.files[0];
   if (!file) return;
@@ -198,103 +219,157 @@ dz.ondrop = e => {
   document.getElementById("btn").textContent = "Upload & Analyse";
 };
 
-// ── Upload ─────────────────────────────────────────────────────────────────────
 function go() {
   if (!file) return;
   document.getElementById("btn").disabled = true;
   document.getElementById("bw").style.display = "block";
   document.getElementById("rc").classList.add("hidden");
-  badge("Connecting…", "uploading");
+  badge("Connecting...", "uploading");
 
   upload = new tus.Upload(file, {
     endpoint: API + "/upload",
     chunkSize: 5 * 1024 * 1024,
     retryDelays: [0, 3000, 5000, 10000, 20000],
     metadata: { filename: file.name, filetype: file.type },
-    onError(err) {
-      badge("Upload failed — " + err, "error");
+    onError: function(err) {
+      badge("Upload failed: " + err, "error");
       document.getElementById("btn").disabled = false;
     },
-    onProgress(sent, total) {
-      const p = Math.round(sent / total * 100);
+    onProgress: function(sent, total) {
+      var p = Math.round(sent / total * 100);
       document.getElementById("bar").style.width = p + "%";
-      document.getElementById("pct").textContent = p + "% · " + fmt(sent) + " / " + fmt(total);
-      badge("Uploading…", "uploading");
+      document.getElementById("pct").textContent = p + "% - " + fmt(sent) + " / " + fmt(total);
+      badge("Uploading...", "uploading");
     },
-    onSuccess() {
-      const uid = upload.url.split("/").pop();
-      badge("Upload complete — analysing video…", "processing");
+    onSuccess: function() {
+      var uid = upload.url.split("/").pop();
+      badge("Upload complete - analysing video...", "processing");
       startPoll(uid);
     },
   });
 
-  upload.findPreviousUploads().then(prev => {
+  upload.findPreviousUploads().then(function(prev) {
     if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
     upload.start();
   });
 }
 
-// ── Poll for results ───────────────────────────────────────────────────────────
 function startPoll(uid) {
   clearInterval(poll);
-  poll = setInterval(async () => {
-    try {
-      const r = await fetch(API + "/status/" + uid);
-      const d = await r.json();
-      if (d.status === "done") {
-        clearInterval(poll);
-        badge("Analysis complete ✓", "done");
-        showResults(uid);
-      } else if ((d.status || "").startsWith("error")) {
-        clearInterval(poll);
-        badge("Error: " + d.status, "error");
-      } else {
-        badge("Processing video… (" + (d.status || "…") + ")", "processing");
-      }
-    } catch (_) {}
+  poll = setInterval(function() {
+    fetch(API + "/status/" + uid)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.status === "done") {
+          clearInterval(poll);
+          badge("Analysis complete!", "done");
+          showResults(uid);
+        } else if (d.status && d.status.indexOf("error") === 0) {
+          clearInterval(poll);
+          badge("Error: " + d.status, "error");
+        } else {
+          badge("Processing video... (" + (d.status || "...") + ")", "processing");
+        }
+      })
+      .catch(function() {});
   }, 3000);
 }
 
-// ── Show results ───────────────────────────────────────────────────────────────
-async function showResults(uid) {
-  const r = await fetch(API + "/results/" + uid);
-  const d = await r.json();
+function showResults(uid) {
+  fetch(API + "/results/" + uid)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      document.getElementById("rc").classList.remove("hidden");
 
-  document.getElementById("rc").classList.remove("hidden");
+      var t = "?t=" + Date.now();
+      heatUrl     = API + d.heatmap_url + t;
+      overlayUrl  = API + d.overlay_url + t;
+      interestUrl = API + d.interest_url + t;
+      interestZones = d.interest_zones || [];
 
-  // Stats
-  document.getElementById("s-total").textContent = d.total_people ?? "—";
-  document.getElementById("s-peak").textContent  = d.peak_hour   ?? "—";
-  document.getElementById("s-dur").textContent   = d.duration    ?? "—";
+      document.getElementById("mainImg").src = heatUrl;
 
-  // Image URLs
-  const t = "?t=" + Date.now();
-  heatUrl     = API + d.heatmap_url  + t;
-  overlayUrl  = API + d.overlay_url  + t;
-  interestUrl = API + d.interest_url + t;
-  document.getElementById("mainImg").src = heatUrl;
+      // Stats
+      var traffic = d.traffic_per_hour || {};
+      var hours = Object.keys(traffic);
+      var peak = d.peak_hour || "--";
+      var quiet = hours.length ? hours.reduce(function(a, b) {
+        return traffic[a] < traffic[b] ? a : b;
+      }) : "--";
 
-  // People per hour chart
-  buildChart(d.people_per_hour || {}, d.peak_hour);
+      document.getElementById("s-peak").textContent = peak;
+      document.getElementById("s-quiet").textContent = quiet;
+      document.getElementById("s-dur").textContent = d.duration || "--";
 
-  // Interest zones
-  buildInterestZones(d.interest_zones || []);
+      // Advice boxes
+      buildAdvice(d);
+
+      // Chart
+      buildChart(traffic, d.peak_hour, d.staffing_per_hour || {});
+
+      // Staffing table
+      buildTable(traffic, d.staffing_per_hour || {});
+
+      // Interest zones
+      buildInterestZones(d.interest_zones || []);
+    });
 }
 
-// ── Bar chart ──────────────────────────────────────────────────────────────────
-function buildChart(data, peakHour) {
-  const labels = Object.keys(data);
-  const values = Object.values(data);
-  const colors = labels.map(l => l === peakHour ? "#ef4444" : "#3b82f6");
+function buildAdvice(d) {
+  var traffic = d.traffic_per_hour || {};
+  var staffing = d.staffing_per_hour || {};
+  var peak = d.peak_hour || "";
+
+  var fullHours = Object.keys(staffing).filter(function(h) { return staffing[h] === "full"; });
+  var reduceHours = Object.keys(staffing).filter(function(h) { return staffing[h] === "reduce"; });
+
+  var html = "";
+
+  if (peak) {
+    html += '<div class="advice-box red">';
+    html += '<div class="icon">&#128680;</div>';
+    html += '<h3>Peak hour: ' + peak + '</h3>';
+    html += '<p>This is your busiest hour. Make sure you have maximum staff available. Do not schedule breaks during this window.</p>';
+    html += '</div>';
+  }
+
+  if (reduceHours.length > 0) {
+    html += '<div class="advice-box green">';
+    html += '<div class="icon">&#128176;</div>';
+    html += '<h3>Save on labor costs</h3>';
+    html += '<p>Traffic is below 40% during: <strong>' + reduceHours.join(", ") + '</strong>. Consider reducing staff during these hours to cut costs.</p>';
+    html += '</div>';
+  }
+
+  if (fullHours.length > 0) {
+    html += '<div class="advice-box blue">';
+    html += '<div class="icon">&#128101;</div>';
+    html += '<h3>Full staffing needed</h3>';
+    html += '<p>Keep full staff during: <strong>' + fullHours.join(", ") + '</strong>. Traffic is above 80% of your peak during these hours.</p>';
+    html += '</div>';
+  }
+
+  document.getElementById("adviceRow").innerHTML = html;
+}
+
+function buildChart(data, peakHour, staffing) {
+  var labels = Object.keys(data);
+  var values = Object.values(data);
+  var colors = labels.map(function(l) {
+    var s = staffing[l];
+    if (s === "full") return "#ef4444";
+    if (s === "reduce") return "#22c55e";
+    return "#3b82f6";
+  });
 
   if (chart) chart.destroy();
-  const ctx = document.getElementById("hourChart").getContext("2d");
+  var ctx = document.getElementById("hourChart").getContext("2d");
   chart = new Chart(ctx, {
     type: "bar",
     data: {
-      labels,
+      labels: labels,
       datasets: [{
-        label: "People",
+        label: "Traffic load %",
         data: values,
         backgroundColor: colors,
         borderRadius: 4,
@@ -307,101 +382,101 @@ function buildChart(data, peakHour) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => `${ctx.parsed.y} people`
+            label: function(ctx) { return ctx.parsed.y + "% of peak traffic"; }
           }
         }
       },
       scales: {
         x: { ticks: { color: "#94a3b8" }, grid: { color: "#2d3148" } },
-        y: { ticks: { color: "#94a3b8" }, grid: { color: "#2d3148" }, beginAtZero: true },
+        y: {
+          ticks: { color: "#94a3b8", callback: function(v) { return v + "%"; } },
+          grid: { color: "#2d3148" },
+          beginAtZero: true,
+          max: 100,
+        },
       },
     },
   });
 }
 
-// ── Interest zones ─────────────────────────────────────────────────────────────
+function buildTable(traffic, staffing) {
+  var body = document.getElementById("staffBody");
+  body.innerHTML = "";
+  Object.keys(traffic).forEach(function(hour) {
+    var pct = traffic[hour];
+    var s = staffing[hour] || "normal";
+    var tr = document.createElement("tr");
+    tr.className = s;
+
+    var pill = "";
+    if (s === "full") {
+      pill = '<span class="pill pill-red">Full staff needed</span>';
+    } else if (s === "reduce") {
+      pill = '<span class="pill pill-green">Reduce staff - save money</span>';
+    } else {
+      pill = '<span class="pill pill-yellow">Normal staffing</span>';
+    }
+
+    var bar = '<div style="background:#2d3148;border-radius:99px;height:6px;width:120px;display:inline-block;vertical-align:middle;margin-right:6px">'
+      + '<div style="background:' + (s === "full" ? "#ef4444" : s === "reduce" ? "#22c55e" : "#3b82f6") + ';width:' + pct + '%;height:100%;border-radius:99px"></div>'
+      + '</div>';
+
+    tr.innerHTML = "<td>" + hour + "</td><td>" + bar + pct + "%</td><td>" + pill + "</td>";
+    body.appendChild(tr);
+  });
+}
+
 function buildInterestZones(zones) {
-  const tips = [
-    "Highest interest zone — people stop here. Place your most profitable products here.",
-    "Second most interesting zone — strong engagement. Good for premium or featured items.",
-    "Third interest zone — people slow down here. Consider promotional displays.",
+  var tips = [
+    "Highest interest zone - people stop here. Place your most profitable products here.",
+    "Second most interesting zone - strong customer engagement. Good for premium items.",
+    "Third interest zone - people slow down here. Consider adding promotional displays.",
   ];
-  const list = document.getElementById("izList");
+  var list = document.getElementById("izList");
   list.innerHTML = "";
   if (!zones.length) {
-    list.innerHTML = "<p style='color:#64748b;font-size:.9rem'>Not enough movement data to detect interest zones.</p>";
+    list.innerHTML = "<p style='color:#64748b;font-size:.9rem'>Not enough movement data detected.</p>";
     return;
   }
-  zones.forEach((z, i) => {
-    const el = document.createElement("div");
+  zones.forEach(function(z, i) {
+    var el = document.createElement("div");
     el.className = "iz-card";
-    el.innerHTML = `
-      <h3>Zone ${z.id} — Rank #${i+1}</h3>
-      <div class="iz-val">${z.intensity}% interest</div>
-      <div class="iz-track"><div class="iz-fill" style="width:${z.intensity}%"></div></div>
-      <p class="iz-tip">${tips[i] || ""}</p>`;
+    el.innerHTML = "<h3>Zone " + z.id + " - Rank #" + (i+1) + "</h3>"
+      + "<div class='iz-val'>" + z.intensity + "% interest</div>"
+      + "<div class='iz-track'><div class='iz-fill' style='width:" + z.intensity + "%'></div></div>"
+      + "<p class='iz-tip'>" + (tips[i] || "") + "</p>";
     list.appendChild(el);
   });
 }
 
-// ── Tab switcher ───────────────────────────────────────────────────────────────
 function switchTab(tab) {
-  currentTab = tab;
-  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(function(t) { t.classList.remove("active"); });
   document.getElementById("t-" + tab).classList.add("active");
+  document.getElementById("legendHeat").classList.toggle("hidden", tab === "interest");
+  document.getElementById("legendInterest").classList.toggle("hidden", tab !== "interest");
+  document.querySelectorAll(".zone-box").forEach(function(el) { el.remove(); });
 
-  // Show/hide legends
-  document.getElementById("legend-heat").classList.toggle("hidden", tab === "interest");
-  document.getElementById("legend-interest").classList.toggle("hidden", tab !== "interest");
-
-  // Clear zone overlays
-  document.querySelectorAll(".zone-box").forEach(el => el.remove());
-
-  const img = document.getElementById("mainImg");
+  var img = document.getElementById("mainImg");
   if (tab === "heat")     img.src = heatUrl;
   if (tab === "overlay")  img.src = overlayUrl;
   if (tab === "interest") {
     img.src = interestUrl;
-    // Add zone overlays on interest tab
-    const wrap = document.getElementById("img-wrap");
-    (window._interestZones || []).forEach((z, i) => {
-      const el = document.createElement("div");
+    var wrap = document.getElementById("imgWrap");
+    interestZones.forEach(function(z, i) {
+      var el = document.createElement("div");
       el.className = "zone-box";
       el.style.left   = z.x1 + "%";
       el.style.top    = z.y1 + "%";
       el.style.width  = (z.x2 - z.x1) + "%";
       el.style.height = (z.y2 - z.y1) + "%";
-      el.innerHTML    = `<span>#${i+1}</span>`;
+      el.innerHTML    = "<span>#" + (i+1) + "</span>";
       wrap.appendChild(el);
     });
   }
 }
 
-// Store interest zones for overlay use
-const _origShowResults = showResults;
-async function showResults(uid) {
-  const r = await fetch(API + "/results/" + uid);
-  const d = await r.json();
-  window._interestZones = d.interest_zones || [];
-
-  document.getElementById("rc").classList.remove("hidden");
-  document.getElementById("s-total").textContent = d.total_people ?? "—";
-  document.getElementById("s-peak").textContent  = d.peak_hour   ?? "—";
-  document.getElementById("s-dur").textContent   = d.duration    ?? "—";
-
-  const t = "?t=" + Date.now();
-  heatUrl     = API + d.heatmap_url  + t;
-  overlayUrl  = API + d.overlay_url  + t;
-  interestUrl = API + d.interest_url + t;
-  document.getElementById("mainImg").src = heatUrl;
-
-  buildChart(d.people_per_hour || {}, d.peak_hour);
-  buildInterestZones(d.interest_zones || []);
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
 function badge(msg, cls) {
-  document.getElementById("status").innerHTML = `<span class="badge ${cls}">${msg}</span>`;
+  document.getElementById("status").innerHTML = '<span class="badge ' + cls + '">' + msg + '</span>';
 }
 
 function fmt(b) {
