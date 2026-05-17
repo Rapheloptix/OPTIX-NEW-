@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>OPTIX — Retail Intelligence</title>
+<!-- Official tus-js-client. Handles chunking, retry, and resume automatically. -->
+<script src="https://cdn.jsdelivr.net/npm/tus-js-client@3.1.0/dist/tus.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
+header{background:#1a1d2e;border-bottom:1px solid #2d3148;padding:1rem 2rem;display:flex;align-items:center;gap:.75rem}
+header h1{font-size:1.4rem;font-weight:700;color:#fff}
+header span{background:#3b82f6;color:#fff;font-size:.7rem;padding:2px 8px;border-radius:99px;font-weight:600}
+main{max-width:960px;margin:0 auto;padding:2rem}
+.card{background:#1a1d2e;border:1px solid #2d3148;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem}
+.card h2{font-size:.8rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:1rem}
+.dropzone{border:2px dashed #2d3148;border-radius:8px;padding:3rem 2rem;text-align:center;cursor:pointer;transition:border-color .2s}
+.dropzone:hover,.dropzone.drag{border-color:#3b82f6}
+.dropzone p{color:#64748b;margin-top:.4rem;font-size:.85rem}
+.btn{display:block;width:100%;background:#3b82f6;color:#fff;border:none;padding:.8rem;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;margin-top:1rem;transition:background .2s}
+.btn:hover{background:#2563eb}
+.btn:disabled{background:#374151;cursor:not-allowed}
+.bar-wrap{background:#0f1117;border-radius:99px;height:10px;margin-top:1rem;overflow:hidden;display:none}
+.bar{height:100%;background:#3b82f6;border-radius:99px;width:0;transition:width .3s}
+.pct{text-align:center;font-size:.8rem;color:#94a3b8;margin-top:.3rem}
+.badge{display:inline-block;padding:3px 10px;border-radius:99px;font-size:.8rem;font-weight:600;margin-top:.75rem}
+.uploading{background:#1e3a8a33;color:#60a5fa;border:1px solid #1e40af}
+.processing{background:#78350f33;color:#fbbf24;border:1px solid #92400e}
+.done{background:#14532d33;color:#4ade80;border:1px solid #166534}
+.error{background:#7f1d1d33;color:#f87171;border:1px solid #991b1b}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+.hw{position:relative;border-radius:8px;overflow:hidden;background:#000}
+.hw img{width:100%;display:block}
+.zone{position:absolute;border:2px solid rgba(239,68,68,.85);background:rgba(239,68,68,.12);border-radius:4px;display:flex;align-items:flex-start;justify-content:flex-start;padding:4px}
+.zone span{background:rgba(239,68,68,.9);color:#fff;font-size:.65rem;font-weight:700;padding:2px 5px;border-radius:3px}
+.bn{background:#0f1117;border:1px solid #2d3148;border-radius:8px;padding:1rem;margin-bottom:.75rem}
+.bn h3{font-size:.8rem;color:#94a3b8;margin-bottom:.4rem}
+.bn-score{font-size:1.5rem;font-weight:700;color:#f87171}
+.bn-track{background:#1a1d2e;border-radius:99px;height:6px;margin-top:.4rem}
+.bn-fill{height:100%;background:#ef4444;border-radius:99px}
+.bn-tip{font-size:.78rem;color:#64748b;margin-top:.4rem}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>OPTIX</h1><span>Retail Intelligence</span>
+</header>
+<main>
+
+  <div class="card">
+    <h2>Upload CCTV Video</h2>
+    <div class="dropzone" id="dz" onclick="document.getElementById('fi').click()">
+      <div style="font-size:2.5rem">🎬</div>
+      <strong id="fname">Drop video here or click to select</strong>
+      <p>Any size · MP4, AVI, MOV · Upload resumes if connection drops</p>
+      <input type="file" id="fi" accept="video/*" style="display:none"/>
+    </div>
+    <button class="btn" id="btn" disabled onclick="go()">Select a video first</button>
+    <div class="bar-wrap" id="bw"><div class="bar" id="bar"></div></div>
+    <p class="pct" id="pct"></p>
+    <div id="status"></div>
+  </div>
+
+  <div class="card hidden" id="rc">
+    <h2>Analysis Results</h2>
+    <p id="meta" style="font-size:.8rem;color:#64748b;margin-bottom:1rem"></p>
+    <div class="grid">
+      <div>
+        <p style="font-size:.8rem;color:#94a3b8;margin-bottom:.5rem">Motion heatmap — red = crowded</p>
+        <div class="hw" id="hw"><img id="himg" src="" alt="heatmap"/></div>
+      </div>
+      <div>
+        <p style="font-size:.8rem;color:#94a3b8;margin-bottom:.5rem">Top bottleneck zones — where to cut staff</p>
+        <div id="bnl"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── CHANGE THIS to your Render backend URL after deploy ──────────────────────
+const API = window.OPTIX_API || "http://localhost:8000";
+
+let file = null, upload = null, poll = null;
+
+// File selection
+document.getElementById("fi").onchange = e => {
+  file = e.target.files[0];
+  if (!file) return;
+  document.getElementById("fname").textContent = file.name + " (" + fmt(file.size) + ")";
+  document.getElementById("btn").disabled = false;
+  document.getElementById("btn").textContent = "Upload & Analyse";
+};
+
+// Drag-and-drop
+const dz = document.getElementById("dz");
+dz.ondragover = e => { e.preventDefault(); dz.classList.add("drag"); };
+dz.ondragleave = () => dz.classList.remove("drag");
+dz.ondrop = e => {
+  e.preventDefault(); dz.classList.remove("drag");
+  file = e.dataTransfer.files[0];
+  if (!file) return;
+  document.getElementById("fname").textContent = file.name + " (" + fmt(file.size) + ")";
+  document.getElementById("btn").disabled = false;
+  document.getElementById("btn").textContent = "Upload & Analyse";
+};
+
+function go() {
+  if (!file) return;
+  document.getElementById("btn").disabled = true;
+  document.getElementById("bw").style.display = "block";
+  document.getElementById("rc").classList.add("hidden");
+  badge("Connecting…", "uploading");
+
+  // tus-js-client: splits into 5 MB chunks, retries on any network error,
+  // resumes from where it stopped even after page reload (via localStorage).
+  upload = new tus.Upload(file, {
+    endpoint: API + "/upload",
+    chunkSize: 5 * 1024 * 1024,           // 5 MB per chunk
+    retryDelays: [0, 3000, 5000, 10000, 20000],  // retry after network drop
+    metadata: { filename: file.name, filetype: file.type },
+
+    onError(err) {
+      badge("Upload failed — " + err, "error");
+      document.getElementById("btn").disabled = false;
+    },
+
+    onProgress(sent, total) {
+      const p = Math.round(sent / total * 100);
+      document.getElementById("bar").style.width = p + "%";
+      document.getElementById("pct").textContent = p + "% · " + fmt(sent) + " / " + fmt(total);
+      badge("Uploading…", "uploading");
+    },
+
+    onSuccess() {
+      // The URL returned by our server is /upload/{uid}
+      const uid = upload.url.split("/").pop();
+      badge("Upload complete — analysing video…", "processing");
+      startPoll(uid);
+    },
+  });
+
+  // If the same file was started before, resume it (tus stores the URL in localStorage)
+  upload.findPreviousUploads().then(prev => {
+    if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
+    upload.start();
+  });
+}
+
+function startPoll(uid) {
+  clearInterval(poll);
+  poll = setInterval(async () => {
+    try {
+      const r = await fetch(API + "/status/" + uid);
+      const d = await r.json();
+      if (d.status === "done") {
+        clearInterval(poll);
+        badge("Done ✓", "done");
+        showResults(uid);
+      } else if ((d.status || "").startsWith("error")) {
+        clearInterval(poll);
+        badge("Error: " + d.status, "error");
+      } else {
+        badge("Processing video… (" + (d.status || "…") + ")", "processing");
+      }
+    } catch (_) { /* network blip, keep polling */ }
+  }, 3000);
+}
+
+async function showResults(uid) {
+  const r = await fetch(API + "/results/" + uid);
+  const d = await r.json();
+
+  document.getElementById("rc").classList.remove("hidden");
+  document.getElementById("meta").textContent =
+    "Frames analysed: " + d.frames_sampled + " of " + d.frames_total +
+    " · Resolution: " + d.resolution;
+
+  // Heatmap image
+  const img = document.getElementById("himg");
+  img.src = API + d.heatmap_url + "?t=" + Date.now();
+
+  // Overlay bottleneck boxes on the heatmap
+  document.querySelectorAll(".zone").forEach(el => el.remove());
+  const hw = document.getElementById("hw");
+  (d.bottlenecks || []).forEach((z, i) => {
+    const el = document.createElement("div");
+    el.className = "zone";
+    el.style.left   = z.x1 + "%";
+    el.style.top    = z.y1 + "%";
+    el.style.width  = (z.x2 - z.x1) + "%";
+    el.style.height = (z.y2 - z.y1) + "%";
+    el.innerHTML = `<span>#${i + 1}</span>`;
+    hw.appendChild(el);
+  });
+
+  // Advice cards
+  const tips = [
+    "Highest traffic zone. Consider reducing staff or widening the aisle.",
+    "Second busiest. Review shelf layout — customers may be blocking each other.",
+    "Third busiest. Evaluate staff positioning here.",
+  ];
+  const list = document.getElementById("bnl");
+  list.innerHTML = "";
+  (d.bottlenecks || []).forEach((z, i) => {
+    const el = document.createElement("div");
+    el.className = "bn";
+    el.innerHTML = `
+      <h3>Zone ${z.id} · Rank #${i+1}</h3>
+      <div class="bn-score">${z.intensity}% intensity</div>
+      <div class="bn-track"><div class="bn-fill" style="width:${z.intensity}%"></div></div>
+      <p class="bn-tip">${tips[i] || ""}</p>`;
+    list.appendChild(el);
+  });
+  if (!d.bottlenecks || d.bottlenecks.length === 0) {
+    list.innerHTML = "<p style='color:#64748b;font-size:.9rem'>No significant bottlenecks detected.</p>";
+  }
+}
+
+function badge(msg, cls) {
+  document.getElementById("status").innerHTML = `<span class="badge ${cls}">${msg}</span>`;
+}
+
+function fmt(b) {
+  if (b < 1024) return b + " B";
+  if (b < 1048576) return (b/1024).toFixed(1) + " KB";
+  if (b < 1073741824) return (b/1048576).toFixed(1) + " MB";
+  return (b/1073741824).toFixed(2) + " GB";
+}
+</script>
+</body>
+</html>
