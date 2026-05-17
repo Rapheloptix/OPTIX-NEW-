@@ -1,11 +1,11 @@
 """
-OPTIX Backend — Zero AI, Zero external APIs
+OPTIX Backend - Zero AI, Zero external APIs
 ============================================
 
 3 Features:
-  1. Motion Heatmap        — red = crowded, blue = empty
-  2. People Counter        — count per hour from video timestamp
-  3. Interest Zones        — where people slow down (optical flow magnitude)
+  1. Motion Heatmap        - red = crowded, blue = empty
+  2. People Counter        - count per hour from video timestamp
+  3. Interest Zones        - where people slow down (optical flow magnitude)
 
 Deploy on Render.com:
   Build command : pip install -r requirements.txt
@@ -29,14 +29,14 @@ from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 
-# ── Storage ──────────────────────────────────────────────────────────────────
+# - Storage ---------------------------------
 BASE    = Path(os.environ.get("DATA_DIR", "./data"))
 UPLOADS = BASE / "uploads"
 RESULTS = BASE / "results"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 RESULTS.mkdir(parents=True, exist_ok=True)
 
-# ── Job state ─────────────────────────────────────────────────────────────────
+# - Job state --------------------------------─
 jobs: dict[str, str] = {}
 
 app = FastAPI(title="OPTIX")
@@ -58,9 +58,9 @@ def _h(extra: dict = {}) -> dict:
     return {"Tus-Resumable": TUS_VER, "Tus-Version": TUS_VER, **extra}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ---------------------------------------
 #  TUS UPLOAD PROTOCOL
-# ══════════════════════════════════════════════════════════════════════════════
+# ---------------------------------------
 
 @app.options("/upload")
 async def tus_options():
@@ -124,7 +124,9 @@ async def tus_patch(uid: str, request: Request, bg: BackgroundTasks):
     p.write_text(json.dumps(info))
     if new_offset >= info["length"]:
         jobs[uid] = "queued"
-        bg.add_task(_analyse, uid, str(UPLOADS / f"{uid}.bin"))
+        import threading
+        t = threading.Thread(target=_analyse, args=(uid, str(UPLOADS / f"{uid}.bin")), daemon=True)
+        t.start()
     return Response(status_code=204, headers=_h({"Upload-Offset": str(new_offset)}))
 
 
@@ -138,9 +140,9 @@ async def tus_delete(uid: str):
     return Response(status_code=204, headers=_h())
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ---------------------------------------
 #  STATUS + RESULTS
-# ══════════════════════════════════════════════════════════════════════════════
+# ---------------------------------------
 
 @app.get("/status/{uid}")
 async def status(uid: str):
@@ -179,10 +181,10 @@ async def interest_img(uid: str):
     return FileResponse(str(f), media_type="image/png")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  CENTROID TRACKER — tracks blobs across frames, gives each a unique ID
+# ---------------------------------------
+#  CENTROID TRACKER - tracks blobs across frames, gives each a unique ID
 #  No AI. Pure Euclidean distance math.
-# ══════════════════════════════════════════════════════════════════════════════
+# ---------------------------------------
 
 class CentroidTracker:
     def __init__(self, max_disappeared=20):
@@ -235,7 +237,7 @@ class CentroidTracker:
             for r, c in zip(rows, cols):
                 if r in used_rows or c in used_cols:
                     continue
-                if D[r, c] > 80:   # too far — not the same object
+                if D[r, c] > 80:   # too far - not the same object
                     continue
                 oid = obj_ids[r]
                 self.objects[oid]    = detections[c]
@@ -243,7 +245,7 @@ class CentroidTracker:
                 used_rows.add(r)
                 used_cols.add(c)
 
-            # Unmatched existing objects — increment disappeared
+            # Unmatched existing objects - increment disappeared
             for r in range(len(obj_centroids)):
                 if r not in used_rows:
                     oid = obj_ids[r]
@@ -251,7 +253,7 @@ class CentroidTracker:
                     if self.disappeared[oid] > self.max_disappeared:
                         self.deregister(oid)
 
-            # New detections not matched — register as new
+            # New detections not matched - register as new
             for c in range(len(detections)):
                 if c not in used_cols:
                     self.register(detections[c])
@@ -259,18 +261,18 @@ class CentroidTracker:
         return self.objects
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  MAIN ANALYSIS — runs in background thread (plain def = auto-threaded by FastAPI)
-# ══════════════════════════════════════════════════════════════════════════════
+# ---------------------------------------
+#  MAIN ANALYSIS - runs in background thread (plain def = auto-threaded by FastAPI)
+# ---------------------------------------
 
 def _analyse(uid: str, video_path: str) -> None:
     """
     Processes the uploaded video and produces:
 
-    1. heatmap.png      — motion accumulation map (red=crowded, blue=empty)
-    2. overlay.png      — heatmap blended onto a real video frame
-    3. interest.png     — interest zones from optical flow (where people slow down)
-    4. analysis.json    — all numeric results:
+    1. heatmap.png      - motion accumulation map (red=crowded, blue=empty)
+    2. overlay.png      - heatmap blended onto a real video frame
+    3. interest.png     - interest zones from optical flow (where people slow down)
+    4. analysis.json    - all numeric results:
          - people_per_hour : {"09:00": 12, "10:00": 34, ...}
          - peak_hour       : "14:00"
          - total_people    : 87
@@ -295,13 +297,13 @@ def _analyse(uid: str, video_path: str) -> None:
 
         h, w = frame0.shape[:2]
 
-        # ── Accumulators ──────────────────────────────────────────────────────
+        # - Accumulators ---------------------------
         accum_heat     = np.zeros((h, w), dtype=np.float32)   # heatmap
         accum_interest = np.zeros((h, w), dtype=np.float32)   # interest zones
         people_per_hour: dict[str, int] = {}                   # "HH:00" → count
         counted_ids: set[int] = set()                          # track unique people
 
-        # ── Tools ─────────────────────────────────────────────────────────────
+        # - Tools ------------------------------─
         mog2 = cv2.createBackgroundSubtractorMOG2(
             history=300, varThreshold=25, detectShadows=False
         )
@@ -324,11 +326,11 @@ def _analyse(uid: str, video_path: str) -> None:
                 break
             frame_num += 1
 
-            # Process every 3rd frame — fast enough, accurate enough for 6h videos
+            # Process every 3rd frame - fast enough, accurate enough for 6h videos
             if frame_num % 3 != 0:
                 continue
 
-            # ── Current timestamp in video ────────────────────────────────────
+            # - Current timestamp in video ------------------
             # frame_num / fps = seconds into the video
             seconds_in = frame_num / fps
             hour_slot  = int(seconds_in // 3600)         # 0, 1, 2, 3 ...
@@ -336,14 +338,14 @@ def _analyse(uid: str, video_path: str) -> None:
             if hour_label not in people_per_hour:
                 people_per_hour[hour_label] = 0
 
-            # ── Feature 1: Heatmap ────────────────────────────────────────────
+            # - Feature 1: Heatmap ----------------------
             fg = mog2.apply(frame)
             fg = cv2.morphologyEx(fg, cv2.MORPH_OPEN,  kernel)  # remove noise
             fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, kernel)  # fill holes
             _, thresh = cv2.threshold(fg, 200, 1, cv2.THRESH_BINARY)
             accum_heat += thresh.astype(np.float32)
 
-            # ── Feature 2: People Counter ─────────────────────────────────────
+            # - Feature 2: People Counter ------------------─
             contours, _ = cv2.findContours(
                 thresh.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
@@ -352,7 +354,7 @@ def _analyse(uid: str, video_path: str) -> None:
                 area = cv2.contourArea(c)
                 if area < 400:    # ignore tiny blobs (noise)
                     continue
-                if area > 50000:  # ignore huge blobs (multiple people merged — still count once)
+                if area > 50000:  # ignore huge blobs (multiple people merged - still count once)
                     pass
                 M  = cv2.moments(c)
                 if M["m00"] == 0:
@@ -373,7 +375,7 @@ def _analyse(uid: str, video_path: str) -> None:
                         people_per_hour[hour_label] += 1
                 prev_positions[oid] = cy
 
-            # ── Feature 3: Interest Zones (Optical Flow) ──────────────────────
+            # - Feature 3: Interest Zones (Optical Flow) -----------
             # Sample every 15th processed frame to save time (still accurate)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             if prev_gray is not None and sampled % 5 == 0:
@@ -398,13 +400,13 @@ def _analyse(uid: str, video_path: str) -> None:
         if sampled == 0:
             raise RuntimeError("No frames were processed")
 
-        # ── Build Heatmap ─────────────────────────────────────────────────────
+        # - Build Heatmap --------------------------─
         blur  = cv2.GaussianBlur(accum_heat, (25, 25), 0)
         norm  = cv2.normalize(blur, None, 0, 255, cv2.NORM_MINMAX)
         heatmap = cv2.applyColorMap(norm.astype(np.uint8), cv2.COLORMAP_JET)
         cv2.imwrite(str(out / "heatmap.png"), heatmap)
 
-        # ── Build Overlay ─────────────────────────────────────────────────────
+        # - Build Overlay --------------------------─
         cap2 = cv2.VideoCapture(video_path)
         cap2.set(cv2.CAP_PROP_POS_FRAMES, total_frames // 2)
         ret2, mid = cap2.read()
@@ -413,14 +415,14 @@ def _analyse(uid: str, video_path: str) -> None:
             overlay = cv2.addWeighted(mid, 0.45, heatmap, 0.65, 0)
             cv2.imwrite(str(out / "overlay.png"), overlay)
 
-        # ── Build Interest Zone Image ─────────────────────────────────────────
+        # - Build Interest Zone Image --------------------─
         blur_i   = cv2.GaussianBlur(accum_interest, (31, 31), 0)
         norm_i   = cv2.normalize(blur_i, None, 0, 255, cv2.NORM_MINMAX)
         # Use HOT colormap: black=no interest, yellow=medium, white=maximum interest
         interest_img = cv2.applyColorMap(norm_i.astype(np.uint8), cv2.COLORMAP_HOT)
         cv2.imwrite(str(out / "interest.png"), interest_img)
 
-        # ── Interest Zone Grid (6x6) ──────────────────────────────────────────
+        # - Interest Zone Grid (6x6) ---------------------
         ROWS, COLS = 6, 6
         zh, zw = h // ROWS, w // COLS
         zones = []
@@ -444,13 +446,13 @@ def _analyse(uid: str, video_path: str) -> None:
 
         top_interest_zones = [z for z in zones[:3] if z["score"] > 0]
 
-        # ── People Per Hour — sort by hour ────────────────────────────────────
+        # - People Per Hour - sort by hour ------------------
         people_per_hour_sorted = dict(sorted(people_per_hour.items()))
         total_people = sum(people_per_hour_sorted.values())
         peak_hour    = max(people_per_hour_sorted, key=people_per_hour_sorted.get) \
                        if people_per_hour_sorted else "N/A"
 
-        # ── Video duration ────────────────────────────────────────────────────
+        # - Video duration --------------------------
         duration_seconds = int(total_frames / fps)
         duration_str     = f"{duration_seconds // 3600}h {(duration_seconds % 3600) // 60}m"
 
@@ -463,16 +465,16 @@ def _analyse(uid: str, video_path: str) -> None:
             "duration":        duration_str,
             "fps":             round(fps, 2),
 
-            # Feature 1 — Heatmap
+            # Feature 1 - Heatmap
             "heatmap_url":     f"/results/{uid}/heatmap.png",
             "overlay_url":     f"/results/{uid}/overlay.png",
 
-            # Feature 2 — People Counter
+            # Feature 2 - People Counter
             "total_people":    total_people,
             "peak_hour":       peak_hour,
             "people_per_hour": people_per_hour_sorted,
 
-            # Feature 3 — Interest Zones
+            # Feature 3 - Interest Zones
             "interest_url":    f"/results/{uid}/interest.png",
             "interest_zones":  top_interest_zones,
             "all_zones":       zones,
