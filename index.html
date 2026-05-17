@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,6 +7,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>OPTIX — Retail Intelligence</title>
 <script src="https://cdn.jsdelivr.net/npm/tus-js-client@3.1.0/dist/tus.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
@@ -30,24 +32,41 @@ main{max-width:1100px;margin:0 auto;padding:2rem}
 .done{background:#14532d33;color:#4ade80;border:1px solid #166534}
 .error{background:#7f1d1d33;color:#f87171;border:1px solid #991b1b}
 
-/* Heatmap */
-.heatmap-wrap{border-radius:10px;overflow:hidden;background:#000;position:relative}
-.heatmap-wrap img{width:100%;display:block}
-.toggle-row{display:flex;gap:.5rem;margin-bottom:.75rem}
-.toggle-btn{background:#1a1d2e;border:1px solid #2d3148;color:#94a3b8;padding:.4rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem;transition:all .2s}
-.toggle-btn.active{background:#3b82f6;border-color:#3b82f6;color:#fff}
+/* Stats row */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem}
+.stat{background:#0f1117;border-radius:8px;padding:1rem;text-align:center;border:1px solid #2d3148}
+.stat-val{font-size:1.8rem;font-weight:700;color:#fff}
+.stat-label{font-size:.75rem;color:#64748b;margin-top:.25rem}
 
-/* Color legend */
+/* Tabs */
+.tabs{display:flex;gap:.5rem;margin-bottom:1rem}
+.tab{background:#0f1117;border:1px solid #2d3148;color:#64748b;padding:.4rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem;transition:all .2s}
+.tab.active{background:#3b82f6;border-color:#3b82f6;color:#fff}
+
+/* Images */
+.img-wrap{position:relative;border-radius:8px;overflow:hidden;background:#000}
+.img-wrap img{width:100%;display:block}
+.zone-box{position:absolute;border:2px solid rgba(251,191,36,.85);background:rgba(251,191,36,.1);border-radius:4px;display:flex;align-items:flex-start;padding:4px}
+.zone-box span{background:rgba(251,191,36,.9);color:#000;font-size:.65rem;font-weight:700;padding:2px 5px;border-radius:3px}
+
+/* Legend */
 .legend{display:flex;align-items:center;gap:.5rem;margin-top:.75rem}
-.legend-bar{flex:1;height:16px;border-radius:4px;background:linear-gradient(to right,#00008b,#0000ff,#00ffff,#00ff00,#ffff00,#ff8000,#ff0000)}
+.legend-bar{flex:1;height:14px;border-radius:4px}
 .legend-labels{display:flex;justify-content:space-between;font-size:.7rem;color:#64748b;margin-top:3px}
 
-/* Stats row */
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1rem}
-.stat{background:#0f1117;border-radius:8px;padding:.75rem;text-align:center;border:1px solid #2d3148}
-.stat-val{font-size:1.4rem;font-weight:700;color:#fff}
-.stat-label{font-size:.75rem;color:#64748b;margin-top:.2rem}
+/* Chart */
+.chart-wrap{position:relative;height:260px;margin-top:1rem}
 
+/* Interest zones list */
+.iz-card{background:#0f1117;border:1px solid #2d3148;border-radius:8px;padding:.85rem;margin-bottom:.6rem}
+.iz-card h3{font-size:.8rem;color:#94a3b8;margin-bottom:.3rem}
+.iz-val{font-size:1.3rem;font-weight:700;color:#fbbf24}
+.iz-track{background:#1a1d2e;border-radius:99px;height:6px;margin-top:.35rem}
+.iz-fill{height:100%;background:#f59e0b;border-radius:99px}
+.iz-tip{font-size:.77rem;color:#64748b;margin-top:.35rem}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
 .hidden{display:none}
 </style>
 </head>
@@ -57,12 +76,13 @@ main{max-width:1100px;margin:0 auto;padding:2rem}
 </header>
 <main>
 
+  <!-- Upload -->
   <div class="card">
     <h2>Upload CCTV Video</h2>
     <div class="dropzone" id="dz" onclick="document.getElementById('fi').click()">
       <div style="font-size:2.5rem">🎬</div>
       <strong id="fname">Drop video here or click to select</strong>
-      <p>Any size · MP4, AVI, MOV · Resumes if connection drops</p>
+      <p>Any size · MP4, AVI, MOV · Resumes automatically if connection drops</p>
       <input type="file" id="fi" accept="video/*" style="display:none"/>
     </div>
     <button class="btn" id="btn" disabled onclick="go()">Select a video first</button>
@@ -71,45 +91,93 @@ main{max-width:1100px;margin:0 auto;padding:2rem}
     <div id="status"></div>
   </div>
 
-  <div class="card hidden" id="rc">
-    <h2>Motion Heatmap</h2>
-
-    <!-- Toggle between pure heatmap and overlay -->
-    <div class="toggle-row">
-      <button class="toggle-btn active" id="btn-heat" onclick="showHeat()">Heatmap only</button>
-      <button class="toggle-btn" id="btn-overlay" onclick="showOverlay()">Overlay on video</button>
-    </div>
-
-    <div class="heatmap-wrap">
-      <img id="himg" src="" alt="heatmap"/>
-    </div>
-
-    <!-- Color legend -->
-    <div class="legend">
-      <span style="font-size:.7rem;color:#64748b">Cold</span>
-      <div style="flex:1">
-        <div class="legend-bar"></div>
-        <div class="legend-labels">
-          <span>No movement</span>
-          <span>Some movement</span>
-          <span>🔴 Maximum activity</span>
-        </div>
-      </div>
-      <span style="font-size:.7rem;color:#f87171">Hot</span>
-    </div>
+  <!-- Results -->
+  <div class="hidden" id="rc">
 
     <!-- Stats -->
-    <div class="stats" id="stats"></div>
-  </div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-val" id="s-total">—</div>
+        <div class="stat-label">Total people counted</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="s-peak" style="color:#f87171">—</div>
+        <div class="stat-label">Busiest hour</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="s-dur">—</div>
+        <div class="stat-label">Video duration</div>
+      </div>
+    </div>
 
+    <!-- Feature 2: People per hour chart -->
+    <div class="card">
+      <h2>People per hour — staffing guide</h2>
+      <p style="font-size:.8rem;color:#64748b;margin-bottom:.5rem">
+        Use this chart to plan exactly how many staff you need each hour. Red bar = peak hour.
+      </p>
+      <div class="chart-wrap">
+        <canvas id="hourChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Feature 1: Heatmap + Feature 3: Interest zones -->
+    <div class="card">
+      <h2>Motion analysis</h2>
+
+      <div class="tabs">
+        <button class="tab active" id="t-heat"     onclick="switchTab('heat')">🌡 Heatmap</button>
+        <button class="tab"        id="t-overlay"  onclick="switchTab('overlay')">📷 Overlay</button>
+        <button class="tab"        id="t-interest" onclick="switchTab('interest')">⭐ Interest zones</button>
+      </div>
+
+      <div class="grid2">
+        <!-- Left: image -->
+        <div>
+          <div class="img-wrap" id="img-wrap">
+            <img id="mainImg" src="" alt="analysis"/>
+          </div>
+          <!-- Color legend — changes per tab -->
+          <div class="legend" id="legend-heat">
+            <span style="font-size:.7rem;color:#64748b">Cold</span>
+            <div style="flex:1">
+              <div class="legend-bar" style="background:linear-gradient(to right,#00008b,#0000ff,#00ffff,#00ff00,#ffff00,#ff8000,#ff0000)"></div>
+              <div class="legend-labels"><span>Nobody</span><span>Some traffic</span><span>🔴 Most crowded</span></div>
+            </div>
+            <span style="font-size:.7rem;color:#f87171">Hot</span>
+          </div>
+          <div class="legend hidden" id="legend-interest">
+            <span style="font-size:.7rem;color:#64748b">Moving fast</span>
+            <div style="flex:1">
+              <div class="legend-bar" style="background:linear-gradient(to right,#000,#800,#f00,#ff8c00,#ffff00,#fff)"></div>
+              <div class="legend-labels"><span>Passing by</span><span>Slowing down</span><span>⭐ Stopping here</span></div>
+            </div>
+            <span style="font-size:.7rem;color:#fbbf24">Interested</span>
+          </div>
+        </div>
+
+        <!-- Right: interest zones -->
+        <div>
+          <p style="font-size:.8rem;color:#94a3b8;margin-bottom:.75rem">
+            Top zones where people slow down — best spots for high-margin products
+          </p>
+          <div id="izList"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
 </main>
 
 <script>
+// ── Config ────────────────────────────────────────────────────────────────────
 const API = "https://optix-new.onrender.com";
 
-let file = null, upload = null, poll = null;
-let heatUrl = "", overlayUrl = "";
+let file = null, upload = null, poll = null, chart = null;
+let heatUrl = "", overlayUrl = "", interestUrl = "";
+let currentTab = "heat";
 
+// ── File selection ─────────────────────────────────────────────────────────────
 document.getElementById("fi").onchange = e => {
   file = e.target.files[0];
   if (!file) return;
@@ -130,6 +198,7 @@ dz.ondrop = e => {
   document.getElementById("btn").textContent = "Upload & Analyse";
 };
 
+// ── Upload ─────────────────────────────────────────────────────────────────────
 function go() {
   if (!file) return;
   document.getElementById("btn").disabled = true;
@@ -165,6 +234,7 @@ function go() {
   });
 }
 
+// ── Poll for results ───────────────────────────────────────────────────────────
 function startPoll(uid) {
   clearInterval(poll);
   poll = setInterval(async () => {
@@ -179,55 +249,157 @@ function startPoll(uid) {
         clearInterval(poll);
         badge("Error: " + d.status, "error");
       } else {
-        badge("Processing… (" + (d.status || "…") + ")", "processing");
+        badge("Processing video… (" + (d.status || "…") + ")", "processing");
       }
     } catch (_) {}
   }, 3000);
 }
 
+// ── Show results ───────────────────────────────────────────────────────────────
 async function showResults(uid) {
   const r = await fetch(API + "/results/" + uid);
   const d = await r.json();
 
   document.getElementById("rc").classList.remove("hidden");
 
-  heatUrl    = API + d.heatmap_url + "?t=" + Date.now();
-  overlayUrl = API + d.overlay_url + "?t=" + Date.now();
-
-  document.getElementById("himg").src = heatUrl;
-
   // Stats
-  const zones = d.zones || [];
-  const hottest = zones[0];
-  const statsEl = document.getElementById("stats");
-  statsEl.innerHTML = `
-    <div class="stat">
-      <div class="stat-val">${d.frames_sampled.toLocaleString()}</div>
-      <div class="stat-label">Frames analysed</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val">${d.resolution}</div>
-      <div class="stat-label">Video resolution</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val" style="color:#f87171">${hottest ? hottest.id : "—"}</div>
-      <div class="stat-label">Hottest zone</div>
-    </div>
-  `;
+  document.getElementById("s-total").textContent = d.total_people ?? "—";
+  document.getElementById("s-peak").textContent  = d.peak_hour   ?? "—";
+  document.getElementById("s-dur").textContent   = d.duration    ?? "—";
+
+  // Image URLs
+  const t = "?t=" + Date.now();
+  heatUrl     = API + d.heatmap_url  + t;
+  overlayUrl  = API + d.overlay_url  + t;
+  interestUrl = API + d.interest_url + t;
+  document.getElementById("mainImg").src = heatUrl;
+
+  // People per hour chart
+  buildChart(d.people_per_hour || {}, d.peak_hour);
+
+  // Interest zones
+  buildInterestZones(d.interest_zones || []);
 }
 
-function showHeat() {
-  document.getElementById("himg").src = heatUrl;
-  document.getElementById("btn-heat").classList.add("active");
-  document.getElementById("btn-overlay").classList.remove("active");
+// ── Bar chart ──────────────────────────────────────────────────────────────────
+function buildChart(data, peakHour) {
+  const labels = Object.keys(data);
+  const values = Object.values(data);
+  const colors = labels.map(l => l === peakHour ? "#ef4444" : "#3b82f6");
+
+  if (chart) chart.destroy();
+  const ctx = document.getElementById("hourChart").getContext("2d");
+  chart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "People",
+        data: values,
+        backgroundColor: colors,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.parsed.y} people`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: "#94a3b8" }, grid: { color: "#2d3148" } },
+        y: { ticks: { color: "#94a3b8" }, grid: { color: "#2d3148" }, beginAtZero: true },
+      },
+    },
+  });
 }
 
-function showOverlay() {
-  document.getElementById("himg").src = overlayUrl;
-  document.getElementById("btn-overlay").classList.add("active");
-  document.getElementById("btn-heat").classList.remove("active");
+// ── Interest zones ─────────────────────────────────────────────────────────────
+function buildInterestZones(zones) {
+  const tips = [
+    "Highest interest zone — people stop here. Place your most profitable products here.",
+    "Second most interesting zone — strong engagement. Good for premium or featured items.",
+    "Third interest zone — people slow down here. Consider promotional displays.",
+  ];
+  const list = document.getElementById("izList");
+  list.innerHTML = "";
+  if (!zones.length) {
+    list.innerHTML = "<p style='color:#64748b;font-size:.9rem'>Not enough movement data to detect interest zones.</p>";
+    return;
+  }
+  zones.forEach((z, i) => {
+    const el = document.createElement("div");
+    el.className = "iz-card";
+    el.innerHTML = `
+      <h3>Zone ${z.id} — Rank #${i+1}</h3>
+      <div class="iz-val">${z.intensity}% interest</div>
+      <div class="iz-track"><div class="iz-fill" style="width:${z.intensity}%"></div></div>
+      <p class="iz-tip">${tips[i] || ""}</p>`;
+    list.appendChild(el);
+  });
 }
 
+// ── Tab switcher ───────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.getElementById("t-" + tab).classList.add("active");
+
+  // Show/hide legends
+  document.getElementById("legend-heat").classList.toggle("hidden", tab === "interest");
+  document.getElementById("legend-interest").classList.toggle("hidden", tab !== "interest");
+
+  // Clear zone overlays
+  document.querySelectorAll(".zone-box").forEach(el => el.remove());
+
+  const img = document.getElementById("mainImg");
+  if (tab === "heat")     img.src = heatUrl;
+  if (tab === "overlay")  img.src = overlayUrl;
+  if (tab === "interest") {
+    img.src = interestUrl;
+    // Add zone overlays on interest tab
+    const wrap = document.getElementById("img-wrap");
+    (window._interestZones || []).forEach((z, i) => {
+      const el = document.createElement("div");
+      el.className = "zone-box";
+      el.style.left   = z.x1 + "%";
+      el.style.top    = z.y1 + "%";
+      el.style.width  = (z.x2 - z.x1) + "%";
+      el.style.height = (z.y2 - z.y1) + "%";
+      el.innerHTML    = `<span>#${i+1}</span>`;
+      wrap.appendChild(el);
+    });
+  }
+}
+
+// Store interest zones for overlay use
+const _origShowResults = showResults;
+async function showResults(uid) {
+  const r = await fetch(API + "/results/" + uid);
+  const d = await r.json();
+  window._interestZones = d.interest_zones || [];
+
+  document.getElementById("rc").classList.remove("hidden");
+  document.getElementById("s-total").textContent = d.total_people ?? "—";
+  document.getElementById("s-peak").textContent  = d.peak_hour   ?? "—";
+  document.getElementById("s-dur").textContent   = d.duration    ?? "—";
+
+  const t = "?t=" + Date.now();
+  heatUrl     = API + d.heatmap_url  + t;
+  overlayUrl  = API + d.overlay_url  + t;
+  interestUrl = API + d.interest_url + t;
+  document.getElementById("mainImg").src = heatUrl;
+
+  buildChart(d.people_per_hour || {}, d.peak_hour);
+  buildInterestZones(d.interest_zones || []);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 function badge(msg, cls) {
   document.getElementById("status").innerHTML = `<span class="badge ${cls}">${msg}</span>`;
 }
