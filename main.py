@@ -1,10 +1,13 @@
 """
-OPTIX Backend - Zero AI, Zero external APIs
+OPTIX Backend - SAM (Segment Anything Model) by Meta
 
 3 Features:
-  1. Motion Heatmap - red = crowded, blue = empty
-  2. Traffic Load per hour - % of max activity (100% accurate, not a count)
-  3. Interest Zones - where people slow down (optical flow)
+  1. Presence Heatmap - where detected objects appear most (red = frequent, blue = rare)
+  2. Traffic Load per hour - object count per hour as % of peak hour
+  3. Interest Zones - where objects dwell longest (mask overlap between frames)
+
+SAM ViT-B checkpoint (~375 MB) is downloaded automatically on first run.
+Override path via env var: SAM_CHECKPOINT=/path/to/sam_vit_b_01ec64.pth
 
 Deploy on Render.com:
   Build command : pip install -r requirements.txt
@@ -18,14 +21,17 @@ import uuid
 import json
 import base64
 import threading
+import urllib.request
 from pathlib import Path
 
 import cv2
 import numpy as np
+import torch
 import aiofiles
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 
 BASE    = Path(os.environ.get("DATA_DIR", "./data"))
 UPLOADS = BASE / "uploads"
@@ -33,7 +39,43 @@ RESULTS = BASE / "results"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 RESULTS.mkdir(parents=True, exist_ok=True)
 
+SAM_CHECKPOINT_URL = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+SAM_CHECKPOINT     = Path(os.environ.get("SAM_CHECKPOINT", str(BASE / "sam_vit_b_01ec64.pth")))
+SAM_MODEL_TYPE     = os.environ.get("SAM_MODEL_TYPE", "vit_b")
+DEVICE             = "cuda" if torch.cuda.is_available() else "cpu"
+
 jobs: dict[str, str] = {}
+
+_mask_generator: SamAutomaticMaskGenerator | None = None
+_sam_lock = threading.Lock()
+
+
+def _ensure_checkpoint() -> None:
+    if SAM_CHECKPOINT.exists():
+        return
+    SAM_CHECKPOINT.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading SAM checkpoint to {SAM_CHECKPOINT} (~375 MB)…")
+    urllib.request.urlretrieve(SAM_CHECKPOINT_URL, str(SAM_CHECKPOINT))
+    print("SAM checkpoint ready.")
+
+
+def _get_mask_generator() -> SamAutomaticMaskGenerator:
+    global _mask_generator
+    if _mask_generator is None:
+        with _sam_lock:
+            if _mask_generator is None:
+                _ensure_checkpoint()
+                sam = sam_model_registry[SAM_MODEL_TYPE](checkpoint=str(SAM_CHECKPOINT))
+                sam.to(device=DEVICE)
+                _mask_generator = SamAutomaticMaskGenerator(
+                    sam,
+                    points_per_side=16,
+                    pred_iou_thresh=0.86,
+                    stability_score_thresh=0.92,
+                    min_mask_region_area=500,
+                )
+    return _mask_generator
+
 
 app = FastAPI(title="OPTIX")
 
@@ -177,10 +219,9 @@ async def interest_img(uid: str):
 
 def _analyse(uid: str, video_path: str) -> None:
     """
-    Feature 1: Heatmap - motion accumulation, JET colormap
-    Feature 2: Traffic load per hour - total motion pixels per hour slot
-                expressed as % of the busiest hour (100% accurate)
-    Feature 3: Interest zones - optical flow magnitude (where people slow down)
+    Feature 1: Heatmap  - accumulate SAM segmentation masks across sampled frames
+    Feature 2: Traffic  - count SAM-detected objects per hour slot, as % of peak
+    Feature 3: Interest - mask overlap between consecutive frames (dwelling zones)
     """
     try:
         jobs[uid] = "processing"
@@ -191,12 +232,11 @@ def _analyse(uid: str, video_path: str) -> None:
         if not cap.isOpened():
             raise RuntimeError("Cannot open video file")
 
-        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        fps          = cap.get(cv2.CAP_PROP_FPS) or 25.0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # Calculate duration upfront from frame count
         duration_seconds = int(total_frames / fps) if fps > 0 else 0
-        hours = duration_seconds // 3600
+        hours   = duration_seconds // 3600
         minutes = (duration_seconds % 3600) // 60
         duration_str = f"{hours}h {minutes}m"
 
@@ -206,23 +246,18 @@ def _analyse(uid: str, video_path: str) -> None:
 
         h, w = frame0.shape[:2]
 
-        # Accumulators
-        accum_heat = np.zeros((h, w), dtype=np.float32)
+        accum_heat     = np.zeros((h, w), dtype=np.float32)
         accum_interest = np.zeros((h, w), dtype=np.float32)
+        traffic_per_hour: dict[int, float] = {}
 
-        # Traffic load: motion pixels per hour slot
-        # Key = hour index (0, 1, 2...), Value = total motion pixels
-        traffic_per_hour = {}
+        # Cap at ~100 SAM runs regardless of video length (SAM is expensive on CPU)
+        SAMPLE_EVERY = max(1, total_frames // 100)
 
-        mog2 = cv2.createBackgroundSubtractorMOG2(
-            history=300, varThreshold=25, detectShadows=False
-        )
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-
+        mask_gen  = _get_mask_generator()
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
         frame_num = 0
-        sampled = 0
-        prev_gray = None
+        sampled   = 0
+        prev_mask = np.zeros((h, w), dtype=np.float32)
 
         while True:
             ret, frame = cap.read()
@@ -230,55 +265,53 @@ def _analyse(uid: str, video_path: str) -> None:
                 break
             frame_num += 1
 
-            # Sample every 3rd frame - fast and accurate
-            if frame_num % 3 != 0:
+            if frame_num % SAMPLE_EVERY != 0:
                 continue
 
-            # Which hour slot is this frame in?
             seconds_in = frame_num / fps
-            hour_slot = int(seconds_in // 3600)
-            if hour_slot not in traffic_per_hour:
-                traffic_per_hour[hour_slot] = 0.0
+            hour_slot  = int(seconds_in // 3600)
+            traffic_per_hour.setdefault(hour_slot, 0.0)
 
-            # Feature 1: Heatmap
-            fg = mog2.apply(frame)
-            fg = cv2.morphologyEx(fg, cv2.MORPH_OPEN, kernel)
-            fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, kernel)
-            _, thresh = cv2.threshold(fg, 200, 1, cv2.THRESH_BINARY)
-            motion_pixels = float(thresh.sum())
-            accum_heat += thresh.astype(np.float32)
+            # SAM expects RGB
+            image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            sam_masks = mask_gen.generate(image_rgb)
 
-            # Feature 2: Traffic load - accumulate motion pixels per hour
-            traffic_per_hour[hour_slot] += motion_pixels
+            # Combine all plausible-sized object masks into one presence map
+            combined     = np.zeros((h, w), dtype=np.float32)
+            object_count = 0
+            for m in sam_masks:
+                area = m["area"]
+                # Exclude tiny noise and full-frame background masks
+                if 500 <= area <= h * w * 0.30:
+                    combined += m["segmentation"].astype(np.float32)
+                    object_count += 1
+            combined = np.clip(combined, 0, 1)
 
-            # Feature 3: Interest zones (optical flow every 5th sample)
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            if prev_gray is not None and sampled % 5 == 0:
-                flow = cv2.calcOpticalFlowFarneback(
-                    prev_gray, gray, None,
-                    0.5, 3, 13, 3, 5, 1.1, 0
-                )
-                mag, _ = cv2.cartToPolar(flow[..., 0], flow[..., 1])
-                # Low magnitude = slow movement = interest
-                interest_frame = np.clip(5.0 - mag, 0, 5.0)
-                motion_mask = (mag > 0.3).astype(np.float32)
-                accum_interest += interest_frame * motion_mask
+            # Feature 1: where objects appear
+            accum_heat += combined
 
-            prev_gray = gray
-            sampled += 1
+            # Feature 2: object count as traffic proxy
+            traffic_per_hour[hour_slot] += object_count
+
+            # Feature 3: overlap with previous frame = slow / dwelling areas
+            if sampled > 0:
+                accum_interest += combined * prev_mask
+
+            prev_mask = combined
+            sampled  += 1
 
         cap.release()
 
         if sampled == 0:
             raise RuntimeError("No frames were processed")
 
-        # Build heatmap
+        # --- Heatmap ---
         blur = cv2.GaussianBlur(accum_heat, (25, 25), 0)
         norm = cv2.normalize(blur, None, 0, 255, cv2.NORM_MINMAX)
         heatmap = cv2.applyColorMap(norm.astype(np.uint8), cv2.COLORMAP_JET)
         cv2.imwrite(str(out / "heatmap.png"), heatmap)
 
-        # Build overlay on middle frame
+        # --- Overlay on middle frame ---
         cap2 = cv2.VideoCapture(video_path)
         cap2.set(cv2.CAP_PROP_POS_FRAMES, total_frames // 2)
         ret2, mid = cap2.read()
@@ -287,13 +320,13 @@ def _analyse(uid: str, video_path: str) -> None:
             overlay = cv2.addWeighted(mid, 0.45, heatmap, 0.65, 0)
             cv2.imwrite(str(out / "overlay.png"), overlay)
 
-        # Build interest zones image
+        # --- Interest zones image ---
         blur_i = cv2.GaussianBlur(accum_interest, (31, 31), 0)
         norm_i = cv2.normalize(blur_i, None, 0, 255, cv2.NORM_MINMAX)
         interest_img = cv2.applyColorMap(norm_i.astype(np.uint8), cv2.COLORMAP_HOT)
         cv2.imwrite(str(out / "interest.png"), interest_img)
 
-        # Build interest zone grid (6x6)
+        # --- Zone grid (6 x 6) ---
         ROWS, COLS = 6, 6
         zh, zw = h // ROWS, w // COLS
         zones = []
@@ -301,14 +334,14 @@ def _analyse(uid: str, video_path: str) -> None:
             for c in range(COLS):
                 y1, y2 = r * zh, (r + 1) * zh
                 x1, x2 = c * zw, (c + 1) * zw
-                score = float(blur_i[y1:y2, x1:x2].mean())
+                score  = float(blur_i[y1:y2, x1:x2].mean())
                 zones.append({
-                    "id": f"R{r+1}C{c+1}",
+                    "id":    f"R{r+1}C{c+1}",
                     "score": round(score, 2),
-                    "x1": round(x1 / w * 100, 1),
-                    "y1": round(y1 / h * 100, 1),
-                    "x2": round(x2 / w * 100, 1),
-                    "y2": round(y2 / h * 100, 1),
+                    "x1":    round(x1 / w * 100, 1),
+                    "y1":    round(y1 / h * 100, 1),
+                    "x2":    round(x2 / w * 100, 1),
+                    "y2":    round(y2 / h * 100, 1),
                 })
         zones.sort(key=lambda z: z["score"], reverse=True)
         max_s = zones[0]["score"] if zones else 1
@@ -316,21 +349,16 @@ def _analyse(uid: str, video_path: str) -> None:
             z["intensity"] = round(z["score"] / max_s * 100) if max_s > 0 else 0
         top_zones = [z for z in zones[:3] if z["score"] > 0]
 
-        # Convert traffic per hour to % of busiest hour
+        # --- Traffic per hour as % of busiest hour ---
         max_traffic = max(traffic_per_hour.values()) if traffic_per_hour else 1
-        traffic_pct = {}
+        traffic_pct: dict[str, int] = {}
         for slot, val in sorted(traffic_per_hour.items()):
             label = f"{slot:02d}:00"
-            pct = round(val / max_traffic * 100)
-            traffic_pct[label] = pct
+            traffic_pct[label] = round(val / max_traffic * 100)
 
-        # Peak hour = busiest slot
-        peak_hour = "N/A"
-        if traffic_pct:
-            peak_hour = max(traffic_pct, key=traffic_pct.get)
+        peak_hour = max(traffic_pct, key=traffic_pct.get) if traffic_pct else "N/A"
 
-        # Staffing advice per hour
-        staffing = {}
+        staffing: dict[str, str] = {}
         for label, pct in traffic_pct.items():
             if pct >= 80:
                 staffing[label] = "full"
@@ -340,21 +368,21 @@ def _analyse(uid: str, video_path: str) -> None:
                 staffing[label] = "reduce"
 
         result = {
-            "id": uid,
-            "status": "done",
-            "frames_total": frame_num,
-            "frames_sampled": sampled,
-            "resolution": f"{w}x{h}",
-            "duration": duration_str,
-            "fps": round(fps, 2),
-            "heatmap_url": f"/results/{uid}/heatmap.png",
-            "overlay_url": f"/results/{uid}/overlay.png",
-            "interest_url": f"/results/{uid}/interest.png",
-            "peak_hour": peak_hour,
-            "traffic_per_hour": traffic_pct,
+            "id":                uid,
+            "status":            "done",
+            "frames_total":      frame_num,
+            "frames_sampled":    sampled,
+            "resolution":        f"{w}x{h}",
+            "duration":          duration_str,
+            "fps":               round(fps, 2),
+            "heatmap_url":       f"/results/{uid}/heatmap.png",
+            "overlay_url":       f"/results/{uid}/overlay.png",
+            "interest_url":      f"/results/{uid}/interest.png",
+            "peak_hour":         peak_hour,
+            "traffic_per_hour":  traffic_pct,
             "staffing_per_hour": staffing,
-            "interest_zones": top_zones,
-            "all_zones": zones,
+            "interest_zones":    top_zones,
+            "all_zones":         zones,
         }
 
         (out / "analysis.json").write_text(json.dumps(result, indent=2))
