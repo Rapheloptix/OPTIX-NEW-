@@ -307,28 +307,52 @@ def _analyse(uid: str, video_path: str) -> None:
         interest_img = cv2.applyColorMap(norm_i.astype(np.uint8), cv2.COLORMAP_HOT)
         cv2.imwrite(str(out / "interest.png"), interest_img)
 
-        # Build interest zone grid (6x6)
-        ROWS, COLS = 6, 6
-        zh, zw = h // ROWS, w // COLS
-        zones = []
-        for r in range(ROWS):
-            for c in range(COLS):
-                y1, y2 = r * zh, (r + 1) * zh
-                x1, x2 = c * zw, (c + 1) * zw
-                score = float(blur_i[y1:y2, x1:x2].mean())
-                zones.append({
-                    "id": f"R{r+1}C{c+1}",
-                    "score": round(score, 2),
-                    "x1": round(x1 / w * 100, 1),
-                    "y1": round(y1 / h * 100, 1),
-                    "x2": round(x2 / w * 100, 1),
-                    "y2": round(y2 / h * 100, 1),
-                })
-        zones.sort(key=lambda z: z["score"], reverse=True)
-        max_s = zones[0]["score"] if zones else 1
-        for z in zones:
-            z["intensity"] = round(z["score"] / max_s * 100) if max_s > 0 else 0
-        top_zones = [z for z in zones[:3] if z["score"] > 0]
+        # 6 Bays - divide store horizontally into 6 equal sections
+        # Each bay gets a dwell time in minutes based on optical flow accumulation
+        # Low optical flow magnitude = people moving slowly = they are interested
+        NUM_BAYS = 6
+        bw = w // NUM_BAYS
+        bays = []
+        frames_per_second = fps / 3  # we sample every 3rd frame
+        flow_samples_per_second = frames_per_second / 5  # optical flow every 5th sample
+
+        for i in range(NUM_BAYS):
+            x1 = i * bw
+            x2 = (i + 1) * bw
+            # Sum of interest accumulator across full height of this bay column
+            bay_score = float(blur_i[:, x1:x2].sum())
+            # Convert score to minutes: each flow sample = 5 frames = 5/fps seconds
+            # interest score is proportional to time people spent moving slowly
+            seconds_per_sample = (3 * 5) / fps  # 3 (frame skip) * 5 (flow skip) / fps
+            dwell_seconds = bay_score / max(blur_i.max(), 1) * seconds_per_sample * sampled
+            dwell_minutes = round(dwell_seconds / 60, 1)
+
+            # Advice based on dwell time relative to max bay
+            bays.append({
+                "bay": i + 1,
+                "label": f"Bay {i + 1}",
+                "dwell_minutes": dwell_minutes,
+                "score": round(bay_score, 1),
+                "x1_pct": round(x1 / w * 100, 1),
+                "x2_pct": round(x2 / w * 100, 1),
+            })
+
+        # Sort to find hottest and coldest bays
+        max_dwell = max(b["dwell_minutes"] for b in bays) or 1
+        for b in bays:
+            b["intensity"] = round(b["dwell_minutes"] / max_dwell * 100)
+            if b["intensity"] >= 70:
+                b["advice"] = "High interest - place your most profitable products here"
+                b["status"] = "hot"
+            elif b["intensity"] >= 35:
+                b["advice"] = "Moderate interest - good for mid-range products"
+                b["status"] = "warm"
+            else:
+                b["advice"] = "Low interest - consider relocating products or improving display"
+                b["status"] = "cold"
+
+        bays_sorted = sorted(bays, key=lambda b: b["dwell_minutes"], reverse=True)
+        top_zones = bays_sorted[:3]
 
         # Convert traffic per hour to % of busiest hour
         max_traffic = max(traffic_per_hour.values()) if traffic_per_hour else 1
@@ -367,8 +391,8 @@ def _analyse(uid: str, video_path: str) -> None:
             "peak_hour": peak_hour,
             "traffic_per_hour": traffic_pct,
             "staffing_per_hour": staffing,
-            "interest_zones": top_zones,
-            "all_zones": zones,
+            "bays": bays,
+            "top_bays": top_zones,
         }
 
         (out / "analysis.json").write_text(json.dumps(result, indent=2))
