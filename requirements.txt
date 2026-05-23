@@ -4,6 +4,3 @@ opencv-python-headless
 numpy
 aiofiles
 python-multipart
-torch
-torchvision
-segment-anything
