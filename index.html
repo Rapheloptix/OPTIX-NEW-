@@ -183,7 +183,7 @@ main{max-width:1100px;margin:0 auto;padding:2rem}
         </div>
         <div>
           <p style="font-size:.8rem;color:#94a3b8;margin-bottom:.75rem">
-            Top zones where people slow down &mdash; best spots for high-margin products
+            Time customers spent in each bay &mdash; red = hot, blue = cold
           </p>
           <div id="izList"></div>
         </div>
@@ -311,7 +311,7 @@ function showResults(uid) {
       buildTable(traffic, d.staffing_per_hour || {});
 
       // Interest zones
-      buildInterestZones(d.interest_zones || []);
+      buildBays(d.bays || []);
     });
 }
 
@@ -426,25 +426,22 @@ function buildTable(traffic, staffing) {
   });
 }
 
-function buildInterestZones(zones) {
-  var tips = [
-    "Highest interest zone - people stop here. Place your most profitable products here.",
-    "Second most interesting zone - strong customer engagement. Good for premium items.",
-    "Third interest zone - people slow down here. Consider adding promotional displays.",
-  ];
+function buildBays(bays) {
   var list = document.getElementById("izList");
   list.innerHTML = "";
-  if (!zones.length) {
+  if (!bays || !bays.length) {
     list.innerHTML = "<p style='color:#64748b;font-size:.9rem'>Not enough movement data detected.</p>";
     return;
   }
-  zones.forEach(function(z, i) {
+  // Show all 6 bays sorted by dwell time
+  bays.forEach(function(b) {
+    var color = b.status === "hot" ? "#ef4444" : b.status === "warm" ? "#f59e0b" : "#3b82f6";
     var el = document.createElement("div");
     el.className = "iz-card";
-    el.innerHTML = "<h3>Zone " + z.id + " - Rank #" + (i+1) + "</h3>"
-      + "<div class='iz-val'>" + z.intensity + "% interest</div>"
-      + "<div class='iz-track'><div class='iz-fill' style='width:" + z.intensity + "%'></div></div>"
-      + "<p class='iz-tip'>" + (tips[i] || "") + "</p>";
+    el.innerHTML = "<h3>" + b.label + "</h3>"
+      + "<div class='iz-val' style='color:" + color + "'>" + b.dwell_minutes + " minutes</div>"
+      + "<div class='iz-track'><div class='iz-fill' style='width:" + b.intensity + "%;background:" + color + "'></div></div>"
+      + "<p class='iz-tip'>" + b.advice + "</p>";
     list.appendChild(el);
   });
 }
