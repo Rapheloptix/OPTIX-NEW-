@@ -183,7 +183,7 @@ main{max-width:1100px;margin:0 auto;padding:2rem}
         </div>
         <div>
           <p style="font-size:.8rem;color:#94a3b8;margin-bottom:.75rem">
-            Time customers spent in each bay &mdash; red = hot, blue = cold
+            % of time each bay had activity &mdash; red = hot, blue = cold
           </p>
           <div id="izList"></div>
         </div>
@@ -433,13 +433,14 @@ function buildBays(bays) {
     list.innerHTML = "<p style='color:#64748b;font-size:.9rem'>Not enough movement data detected.</p>";
     return;
   }
-  // Show all 6 bays sorted by dwell time
-  bays.forEach(function(b) {
+  // Sort by activity
+  var sorted = bays.slice().sort(function(a,b){ return b.pct_active - a.pct_active; });
+  sorted.forEach(function(b) {
     var color = b.status === "hot" ? "#ef4444" : b.status === "warm" ? "#f59e0b" : "#3b82f6";
     var el = document.createElement("div");
     el.className = "iz-card";
     el.innerHTML = "<h3>" + b.label + "</h3>"
-      + "<div class='iz-val' style='color:" + color + "'>" + b.dwell_minutes + " minutes</div>"
+      + "<div class='iz-val' style='color:" + color + "'>" + b.pct_active + "% active</div>"
       + "<div class='iz-track'><div class='iz-fill' style='width:" + b.intensity + "%;background:" + color + "'></div></div>"
       + "<p class='iz-tip'>" + b.advice + "</p>";
     list.appendChild(el);
