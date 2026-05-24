@@ -316,42 +316,43 @@ def _analyse(uid: str, video_path: str) -> None:
         frames_per_second = fps / 3  # we sample every 3rd frame
         flow_samples_per_second = frames_per_second / 5  # optical flow every 5th sample
 
-        # Calculate max possible score for normalization
-        total_blur_sum = float(blur_i.sum()) or 1.0
-        video_duration_minutes = float(duration_seconds) / 60.0
+        # Bay activity = % of sampled frames that had motion in that bay
+        # This is 100% accurate and easy for business owners to understand
+        total_frames_with_motion = float(accum_heat.any(axis=0).sum()) or 1.0
 
         for i in range(NUM_BAYS):
             x1 = i * bw
             x2 = (i + 1) * bw
-            bay_score = float(blur_i[:, x1:x2].sum())
-            # Dwell time = proportion of total video time this bay was active
-            bay_proportion = bay_score / total_blur_sum
-            dwell_minutes = round(bay_proportion * video_duration_minutes, 1)
+            # Count frames where this bay had motion
+            bay_motion_frames = float((accum_heat[:, x1:x2].sum(axis=0) > 0).sum())
+            bay_total_pixels = float(h * bw)
+            # % of time this bay was active (had movement)
+            pct_active = round(bay_motion_frames / max(float(sampled), 1) * 100, 1)
 
             bays.append({
                 "bay": i + 1,
                 "label": f"Bay {i + 1}",
-                "dwell_minutes": dwell_minutes,
-                "score": round(bay_score, 1),
+                "pct_active": pct_active,
+                "score": round(float(blur_i[:, x1:x2].mean()), 2),
                 "x1_pct": round(x1 / w * 100, 1),
                 "x2_pct": round(x2 / w * 100, 1),
             })
 
-        # Sort to find hottest and coldest bays
-        max_dwell = max(b["dwell_minutes"] for b in bays) or 1
+        # Sort by activity
+        max_pct = max(b["pct_active"] for b in bays) or 1
         for b in bays:
-            b["intensity"] = round(b["dwell_minutes"] / max_dwell * 100)
-            if b["intensity"] >= 70:
-                b["advice"] = "High interest - place your most profitable products here"
+            b["intensity"] = round(b["pct_active"] / max_pct * 100)
+            if b["pct_active"] >= 60:
                 b["status"] = "hot"
-            elif b["intensity"] >= 35:
-                b["advice"] = "Moderate interest - good for mid-range products"
+                b["advice"] = "High activity - place your most profitable products here"
+            elif b["pct_active"] >= 25:
                 b["status"] = "warm"
+                b["advice"] = "Moderate activity - good for mid-range products"
             else:
-                b["advice"] = "Low interest - consider relocating products or improving display"
                 b["status"] = "cold"
+                b["advice"] = "Low activity - consider relocating products or improving display"
 
-        bays_sorted = sorted(bays, key=lambda b: b["dwell_minutes"], reverse=True)
+        bays_sorted = sorted(bays, key=lambda b: b["pct_active"], reverse=True)
         top_zones = bays_sorted[:3]
 
         # Convert traffic per hour to % of busiest hour
