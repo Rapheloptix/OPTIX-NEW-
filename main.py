@@ -248,11 +248,11 @@ def _analyse(uid: str, video_path: str) -> None:
             if frame_num % 3 != 0:
                 continue
 
-            # Which hour slot is this frame in?
+            # Time slot - use 10-minute buckets (works for short and long videos)
             seconds_in = frame_num / fps
-            hour_slot = int(seconds_in // 3600)
-            if hour_slot not in traffic_per_hour:
-                traffic_per_hour[hour_slot] = 0.0
+            slot_minutes = int(seconds_in // 600)  # 600 seconds = 10 minutes
+            if slot_minutes not in traffic_per_hour:
+                traffic_per_hour[slot_minutes] = 0.0
 
             # Feature 1: Heatmap
             fg = mog2.apply(frame)
@@ -263,7 +263,7 @@ def _analyse(uid: str, video_path: str) -> None:
             accum_heat += thresh.astype(np.float32)
 
             # Feature 2: Traffic load - accumulate motion pixels per hour
-            traffic_per_hour[hour_slot] += motion_pixels
+            traffic_per_hour[slot_minutes] += motion_pixels
 
             # Feature 3: Interest zones (optical flow every 5th sample)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -316,18 +316,18 @@ def _analyse(uid: str, video_path: str) -> None:
         frames_per_second = fps / 3  # we sample every 3rd frame
         flow_samples_per_second = frames_per_second / 5  # optical flow every 5th sample
 
+        # Calculate max possible score for normalization
+        total_blur_sum = float(blur_i.sum()) or 1.0
+        video_duration_minutes = float(duration_seconds) / 60.0
+
         for i in range(NUM_BAYS):
             x1 = i * bw
             x2 = (i + 1) * bw
-            # Sum of interest accumulator across full height of this bay column
             bay_score = float(blur_i[:, x1:x2].sum())
-            # Convert score to minutes: each flow sample = 5 frames = 5/fps seconds
-            # interest score is proportional to time people spent moving slowly
-            seconds_per_sample = (3 * 5) / fps  # 3 (frame skip) * 5 (flow skip) / fps
-            dwell_seconds = float(bay_score) / float(max(blur_i.max(), 1)) * float(seconds_per_sample) * sampled
-            dwell_minutes = round(float(dwell_seconds) / 60, 1)
+            # Dwell time = proportion of total video time this bay was active
+            bay_proportion = bay_score / total_blur_sum
+            dwell_minutes = round(bay_proportion * video_duration_minutes, 1)
 
-            # Advice based on dwell time relative to max bay
             bays.append({
                 "bay": i + 1,
                 "label": f"Bay {i + 1}",
@@ -358,7 +358,10 @@ def _analyse(uid: str, video_path: str) -> None:
         max_traffic = max(traffic_per_hour.values()) if traffic_per_hour else 1
         traffic_pct = {}
         for slot, val in sorted(traffic_per_hour.items()):
-            label = f"{slot:02d}:00"
+            # slot = number of 10-minute blocks from start
+            h = slot // 6
+            m = (slot % 6) * 10
+            label = f"{h:02d}:{m:02d}"
             pct = round(val / max_traffic * 100)
             traffic_pct[label] = pct
 
