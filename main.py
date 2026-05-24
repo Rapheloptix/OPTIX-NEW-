@@ -324,8 +324,8 @@ def _analyse(uid: str, video_path: str) -> None:
             # Convert score to minutes: each flow sample = 5 frames = 5/fps seconds
             # interest score is proportional to time people spent moving slowly
             seconds_per_sample = (3 * 5) / fps  # 3 (frame skip) * 5 (flow skip) / fps
-            dwell_seconds = bay_score / max(blur_i.max(), 1) * seconds_per_sample * sampled
-            dwell_minutes = round(dwell_seconds / 60, 1)
+            dwell_seconds = float(bay_score) / float(max(blur_i.max(), 1)) * float(seconds_per_sample) * sampled
+            dwell_minutes = round(float(dwell_seconds) / 60, 1)
 
             # Advice based on dwell time relative to max bay
             bays.append({
